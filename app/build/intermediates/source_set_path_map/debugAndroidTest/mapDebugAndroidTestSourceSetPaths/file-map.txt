@@ -1,0 +1,5 @@
+com.linkguard.app.test.app-core-1.6.1-0 C:\Users\Tony\.gradle\caches\9.0.0\transforms\30732591cb96a0a11a9fb7cbc376b402\transformed\core-1.6.1\res
+com.linkguard.app.test.app-androidTest-1 C:\Users\Tony\Desktop\project\Cyber\LinkGuard\app\build\generated\res\resValues\androidTest\debug
+com.linkguard.app.test.app-mergeDebugAndroidTestResources-2 C:\Users\Tony\Desktop\project\Cyber\LinkGuard\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\merged.dir
+com.linkguard.app.test.app-mergeDebugAndroidTestResources-3 C:\Users\Tony\Desktop\project\Cyber\LinkGuard\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\stripped.dir
+com.linkguard.app.test.app-debugAndroidTest-4 C:\Users\Tony\Desktop\project\Cyber\LinkGuard\app\build\intermediates\merged_res\debugAndroidTest\mergeDebugAndroidTestResources

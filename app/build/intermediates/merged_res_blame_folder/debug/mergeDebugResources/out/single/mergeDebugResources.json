@@ -1,0 +1,130 @@
+[
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\layout_item_whitelist.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\layout\\item_whitelist.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\xml_accessibility_service_config.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\xml\\accessibility_service_config.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_bg_scan_count.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\bg_scan_count.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_launcher_foreground.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_settings.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_settings.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\layout_overlay_verdict.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\layout\\overlay_verdict.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\mipmap-anydpi-v26\\ic_launcher.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\xml_locales_config.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\xml\\locales_config.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_launcher_background.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_launcher_background.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_warning.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_warning.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\layout_activity_settings.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\layout\\activity_settings.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\layout_item_history.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\layout\\item_history.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\layout_activity_onboarding.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\layout\\activity_onboarding.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_bg_verdict_reason.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\bg_verdict_reason.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_bg_dot_inactive.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\bg_dot_inactive.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\layout_activity_history.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\layout\\activity_history.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\layout_activity_whitelist.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\layout\\activity_whitelist.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\mipmap-anydpi-v26\\ic_launcher_round.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_bg_dot_active.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\bg_dot_active.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\layout_activity_main.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\layout\\activity_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\menu_menu_main.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\menu\\menu_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_arrow_back.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_arrow_back.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_shield_alert.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_shield_alert.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_shield_check.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_shield_check.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\layout_activity_app_selector.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\layout\\activity_app_selector.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_check_circle.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_check_circle.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_add.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_add.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_notifications.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_notifications.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_delete.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_delete.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\layout_item_app.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\layout\\item_app.xml"
+    },
+    {
+        "merged": "com.linkguard.app-debug-44:/layout_item_history.xml.flat",
+        "source": "com.linkguard.app-main-46:/layout/item_history.xml"
+    },
+    {
+        "merged": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-debug-44:\\drawable_ic_close.xml.flat",
+        "source": "C:\\Users\\Tony\\.gradle\\daemon\\9.0.0\\com.linkguard.app-main-46:\\drawable\\ic_close.xml"
+    }
+]

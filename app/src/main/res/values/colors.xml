@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#1565C0</color>
+    <color name="primary_dark">#0D47A1</color>
+    <color name="secondary">#26A69A</color>
+    <color name="white">#FFFFFF</color>
+
+    <!-- Verdict colors -->
+    <color name="safe_green">#2E7D32</color>
+    <color name="safe_green_bg">#E8F5E9</color>
+    <color name="warning_orange">#E65100</color>
+    <color name="warning_orange_bg">#FFF3E0</color>
+    <color name="danger_red">#B71C1C</color>
+    <color name="danger_red_bg">#FFEBEE</color>
+</resources>
