@@ -73,12 +73,15 @@ class BlocklistUpdateWorker(
             .build()
 
         val response = client.newCall(request).execute()
-        if (!response.isSuccessful) {
-            Log.w(TAG, "Feed HTTP ${response.code}")
-            return emptySet()
+        val body = try {
+            if (!response.isSuccessful) {
+                Log.w(TAG, "Feed HTTP ${response.code}")
+                return emptySet()
+            }
+            response.body?.string() ?: return emptySet()
+        } finally {
+            response.close() // always release the connection, even on early returns above
         }
-
-        val body = response.body?.string() ?: return emptySet()
 
         return body.lines()
             .mapNotNull { line ->

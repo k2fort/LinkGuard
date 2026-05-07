@@ -26,8 +26,25 @@ object ScanOrchestrator {
 
     private val TAG = "ScanOrchestrator"
 
-    suspend fun scan(url: String, context: Context): ScanVerdict = coroutineScope {
-        Log.d(TAG, "Starting scan for: $url")
+    /**
+     * Full scan — used by the notification service.
+     * Runs the complete pipeline including VT polling (up to 25s per URL).
+     */
+    suspend fun scan(url: String, context: Context): ScanVerdict =
+        scanInternal(url, context, quickScan = false)
+
+    /**
+     * Quick scan — used by the accessibility service.
+     * Skips VT polling: only queries the VT cache (< 1s). If not cached, submits for
+     * background analysis and moves on. GSB + heuristics still run in full.
+     * This lets the accessibility service scan multiple chat URLs quickly without
+     * hitting VT rate limits or blocking for 25 seconds per URL.
+     */
+    suspend fun scanQuick(url: String, context: Context): ScanVerdict =
+        scanInternal(url, context, quickScan = true)
+
+    private suspend fun scanInternal(url: String, context: Context, quickScan: Boolean): ScanVerdict = coroutineScope {
+        Log.d(TAG, "Starting scan for: $url (quick=$quickScan)")
 
         val host = UrlExtractor.extractHost(url) ?: run {
             Log.w(TAG, "Could not extract host from: $url")
@@ -70,7 +87,10 @@ object ScanOrchestrator {
 
         // ── Layer 4: Cloud checks (parallel) ────────────────────────────────
         val gsbDeferred  = async { GoogleSafeBrowsingClient.check(scanUrl) }
-        val vtDeferred   = async { VirusTotalClient.check(scanUrl) }
+        val vtDeferred   = async {
+            if (quickScan) VirusTotalClient.checkCacheOnly(scanUrl)
+            else           VirusTotalClient.check(scanUrl)
+        }
         val ageDeferred  = async { DomainAgeChecker.check(resolvedHost) }
 
         val gsb = gsbDeferred.await()
@@ -85,7 +105,7 @@ object ScanOrchestrator {
         buildVerdict(url, resolved.finalUrl, gsb, vt, age)
     }
 
-    private fun buildVerdict(
+    internal fun buildVerdict(
         originalUrl: String,
         resolvedUrl: String,
         gsb: GoogleSafeBrowsingClient.ThreatResult,
@@ -167,7 +187,7 @@ object ScanOrchestrator {
      *  - Random-looking subdomain (8+ alphanumeric chars, e.g. "2vz7dk6r84")
      *  - Combined with a redirect-style path (/l/, /r/, /go/, /click/, /track/)
      */
-    private fun looksLikeRedirector(url: String): Boolean {
+    internal fun looksLikeRedirector(url: String): Boolean {
         val host = UrlExtractor.extractHost(url) ?: return false
         val path = try { java.net.URL(url).path } catch (e: Exception) { return false }
 

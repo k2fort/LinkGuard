@@ -24,7 +24,11 @@ class LinkGuardNotificationService : NotificationListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var overlayManager: OverlayManager
 
-    // Deduplication handled by ScanDeduplicator (shared with AccessibilityService)
+    // Deduplication handled by ScanDeduplicator.
+    // Note: the accessibility service uses its OWN independent dedup cache
+    // (recentlyScannedByA11y) — it does NOT share this one. Sharing caused
+    // accessibility scans to be silently blocked whenever the notification
+    // service had already scanned the same URL within the dedup window.
 
     override fun onCreate() {
         super.onCreate()
@@ -49,11 +53,6 @@ class LinkGuardNotificationService : NotificationListenerService() {
         val monitoredApps = MonitoredAppsPrefs.getMonitoredPackages(applicationContext)
         if (monitoredApps.isNotEmpty() && packageName !in monitoredApps) {
             Log.d(TAG, "Skipping $packageName — not in monitored list")
-            return
-        }
-
-        if (!Settings.canDrawOverlays(applicationContext)) {
-            Log.w(TAG, "Overlay permission not granted")
             return
         }
 
@@ -133,13 +132,24 @@ class LinkGuardNotificationService : NotificationListenerService() {
     private suspend fun handleDetectedUrl(url: String, sourcePackage: String) {
         Log.d(TAG, "Scanning URL from $sourcePackage: $url")
 
-        overlayManager.showScanning(url)
+        val canShowOverlay = Settings.canDrawOverlays(applicationContext)
+
+        // Show the scanning overlay immediately (if permission allows).
+        // Either way, we always scan and always log — overlay permission should not
+        // gate the scan itself.
+        if (canShowOverlay) {
+            overlayManager.showScanning(url)
+        }
 
         val verdict = ScanOrchestrator.scan(url, applicationContext)
         Log.d(TAG, "Verdict: ${verdict.level} for $url")
 
         ScanHistoryPrefs.addEntry(applicationContext, verdict, sourcePackage)
 
-        overlayManager.updateVerdict(verdict)
+        if (canShowOverlay) {
+            overlayManager.updateVerdict(verdict)
+        } else {
+            Log.w(TAG, "Overlay permission not granted — verdict logged silently: ${verdict.level}")
+        }
     }
 }

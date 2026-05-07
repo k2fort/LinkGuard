@@ -1,3 +1,0 @@
-com.linkguard.app.test
-style WhiteBackgroundDialogTheme
-style WhiteBackgroundTheme

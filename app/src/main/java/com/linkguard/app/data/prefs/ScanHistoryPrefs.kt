@@ -16,6 +16,11 @@ object ScanHistoryPrefs {
     private const val KEY_ENTRIES = "entries"
     private const val MAX_ENTRIES = 100
 
+    // Guards the read-modify-write cycle in addEntry.
+    // The notification service and accessibility service both write from Dispatchers.Default
+    // coroutines; without this lock, concurrent completions would lose one entry.
+    private val writeLock = Any()
+
     data class HistoryEntry(
         val timestamp: Long,
         val url: String,
@@ -28,26 +33,31 @@ object ScanHistoryPrefs {
     fun addEntry(context: Context, verdict: ScanVerdict, sourcePackage: String) {
         if (verdict.level == VerdictLevel.SCANNING) return
 
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val existing = parseJson(prefs.getString(KEY_ENTRIES, null))
+        synchronized(writeLock) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val existing = parseJson(prefs.getString(KEY_ENTRIES, null))
 
-        val entry = JSONObject().apply {
-            put("timestamp", System.currentTimeMillis())
-            put("url", verdict.url)
-            put("resolvedUrl", verdict.resolvedUrl ?: "")
-            put("level", verdict.level.name)
-            put("reasons", JSONArray(verdict.reasons))
-            put("sourcePackage", sourcePackage)
+            val entry = JSONObject().apply {
+                put("timestamp", System.currentTimeMillis())
+                put("url", verdict.url)
+                put("resolvedUrl", verdict.resolvedUrl ?: "")
+                put("level", verdict.level.name)
+                put("reasons", JSONArray(verdict.reasons))
+                put("sourcePackage", sourcePackage)
+            }
+
+            // Prepend new entry, keep max MAX_ENTRIES total
+            val updated = JSONArray()
+            updated.put(entry)
+            for (i in 0 until minOf(existing.length(), MAX_ENTRIES - 1)) {
+                updated.put(existing.get(i))
+            }
+
+            // commit() is synchronous — ensures the write is visible to the next
+            // read inside this same lock, preventing a subsequent concurrent call
+            // from reading stale data before our write lands.
+            prefs.edit().putString(KEY_ENTRIES, updated.toString()).commit()
         }
-
-        // Prepend new entry, keep max MAX_ENTRIES total
-        val updated = JSONArray()
-        updated.put(entry)
-        for (i in 0 until minOf(existing.length(), MAX_ENTRIES - 1)) {
-            updated.put(existing.get(i))
-        }
-
-        prefs.edit().putString(KEY_ENTRIES, updated.toString()).apply()
     }
 
     fun getHistory(context: Context): List<HistoryEntry> {

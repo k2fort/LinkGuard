@@ -10,7 +10,6 @@ import com.linkguard.app.data.prefs.MonitoredAppsPrefs
 import com.linkguard.app.data.prefs.ScanHistoryPrefs
 import com.linkguard.app.model.VerdictLevel
 import com.linkguard.app.overlay.OverlayManager
-import com.linkguard.app.scanner.ScanDeduplicator
 import com.linkguard.app.scanner.ScanOrchestrator
 import com.linkguard.app.util.UrlExtractor
 import kotlinx.coroutines.CoroutineScope
@@ -25,13 +24,14 @@ import kotlinx.coroutines.launch
  *
  * How it works:
  *  1. Detects window-state changes (TYPE_WINDOW_STATE_CHANGED)
- *  2. When a monitored app first comes to the foreground, records the initial screen class
- *     but does NOT scan — avoids scanning the chat list / inbox view.
- *  3. When the user navigates to a different screen WITHIN the same app (e.g., opens a
- *     specific chat), the class name changes → scan is triggered.
- *  4. Waits 800ms for the UI to fully render, then walks the accessibility tree.
- *  5. Extracts URLs from visible text and scans each one.
- *  6. Shows overlay only for SUSPICIOUS / DANGEROUS results (SAFE logged silently).
+ *  2. When a monitored app first comes to the foreground, a 1.5s grace period begins.
+ *     Events during this window (e.g., splash → home screen) are ignored — this prevents
+ *     scanning the chat list / inbox when the app is first opened.
+ *  3. When the user navigates to a different screen WITHIN the same app AFTER the grace
+ *     period (e.g., opens a specific chat), the class name changes → scan is triggered.
+ *  4. Waits 800ms for the UI to finish rendering, then walks the accessibility tree.
+ *  5. Extracts URLs from visible text and scans each one silently in the background.
+ *  6. Shows overlay ONLY if the verdict is SUSPICIOUS or DANGEROUS. SAFE = silent log.
  *
  * Requires: Accessibility permission (Settings → Accessibility → LinkGuard)
  */
@@ -41,29 +41,48 @@ class LinkGuardAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var overlayManager: OverlayManager
 
-    // The package currently in the foreground
+    // The monitored-app package currently in the foreground
     private var currentForegroundPackage: String? = null
+
+    // Timestamp (ms) when each package became foreground — used for the launch grace period
+    private val foregroundTimestampByPackage = mutableMapOf<String, Long>()
 
     // Last Activity/Fragment class name seen per package
     // Used to detect navigation between screens within the same app
     private val lastSeenClassByPackage = mutableMapOf<String, String>()
 
-    // Per-package scan cooldown — suppresses rapid re-scans of the same screen
+    // Per-package scan cooldown — suppresses rapid re-scans of the SAME screen
     // (e.g., dialogs or fragment animations that fire extra state-change events)
     private val lastScanByPackage = mutableMapOf<String, Long>()
-    private val SAME_SCREEN_COOLDOWN_MS = 15_000L
+
+    // Per-URL dedup cache local to THIS service.
+    // NOT shared with the notification service's ScanDeduplicator — that shared cache
+    // was blocking accessibility scans whenever the notification service had already
+    // scanned the same URL within the last 60s (which is almost always).
+    // Using a local cache means the accessibility service scans what the user sees in the
+    // chat, regardless of whether a notification scan happened earlier.
+    private val recentlyScannedByA11y = mutableMapOf<String, Long>()
+
+    companion object {
+        // Skip events for 1.5s after a monitored app first foregrounds.
+        // Prevents splash → home from being treated as a "screen navigation".
+        private const val FOREGROUND_GRACE_MS = 1_500L
+        // Cooldown when the same Activity/screen fires repeated events
+        private const val SAME_SCREEN_COOLDOWN_MS = 15_000L
+        // How long to remember a URL scanned by the accessibility service.
+        // 3 minutes: prevents re-scanning the same chat on every dialog/animation event,
+        // but allows fresh results if the user comes back to the chat later.
+        private const val A11Y_URL_DEDUP_MS = 3 * 60 * 1000L
+    }
 
     override fun onServiceConnected() {
         overlayManager = OverlayManager(applicationContext)
-
-        // Confirm we want window-state events and screen content access
         serviceInfo = serviceInfo.apply {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
             notificationTimeout = 100
         }
-
         Log.d(TAG, "Accessibility service connected")
     }
 
@@ -76,38 +95,50 @@ class LinkGuardAccessibilityService : AccessibilityService() {
 
         val className = event.className?.toString() ?: return
 
-        // Check monitored apps list
         val monitored = MonitoredAppsPrefs.getMonitoredPackages(applicationContext)
         if (monitored.isNotEmpty() && packageName !in monitored) return
 
+        val now = System.currentTimeMillis()
         val previousPackage = currentForegroundPackage
         currentForegroundPackage = packageName
 
         if (packageName != previousPackage) {
-            // App just came to the foreground — record the opening screen class but
-            // do NOT scan. This prevents scanning the chat list / inbox overview.
-            Log.d(TAG, "App foregrounded: $packageName [$className] — skipping initial screen")
+            // App just came to the foreground — start a grace period and record the class.
+            // We do NOT scan here: this is the chat list / inbox view, not a conversation.
+            Log.d(TAG, "App foregrounded: $packageName [$className] — grace period started")
+            foregroundTimestampByPackage[packageName] = now
             lastSeenClassByPackage[packageName] = className
             return
         }
 
-        // Same app — check whether the screen (Activity/Fragment class) changed
+        // ── Same app, check if still in the launch grace period ──────────────────
+        // Multi-event launches (e.g., SplashActivity → HomeActivity) arrive within ~1s.
+        // We keep updating the recorded class so the first post-grace event can still
+        // detect a genuine navigation away from the home screen.
+        val foregroundedAt = foregroundTimestampByPackage[packageName] ?: 0L
+        if (now - foregroundedAt < FOREGROUND_GRACE_MS) {
+            Log.d(TAG, "Grace period active for $packageName [$className] — skipping")
+            lastSeenClassByPackage[packageName] = className
+            return
+        }
+
+        // ── Check whether the screen (Activity/Fragment) changed ─────────────────
         val lastClass = lastSeenClassByPackage[packageName]
         val screenChanged = className != lastClass
 
         if (!screenChanged) {
-            // Same screen: apply cooldown to suppress fragment/dialog noise
-            val now = System.currentTimeMillis()
+            // Same screen — apply cooldown to suppress dialog/animation noise
             val lastScan = lastScanByPackage[packageName] ?: 0L
             if (now - lastScan < SAME_SCREEN_COOLDOWN_MS) {
-                Log.d(TAG, "Same screen cooldown active for $packageName — skipping")
+                Log.d(TAG, "Same-screen cooldown active for $packageName — skipping")
                 return
             }
         }
 
         // User navigated to a new screen within the app (e.g., opened a specific chat)
+        // OR the same screen reloaded after cooldown expired.
         lastSeenClassByPackage[packageName] = className
-        lastScanByPackage[packageName] = System.currentTimeMillis()
+        lastScanByPackage[packageName] = now
 
         Log.d(TAG, "Screen navigated in $packageName → $className — scheduling scan")
 
@@ -140,6 +171,7 @@ class LinkGuardAccessibilityService : AccessibilityService() {
             }
         }
 
+        @Suppress("DEPRECATION") // recycle() deprecated on API 34+ but safe on older versions
         try { root.recycle() } catch (_: Exception) { /* already recycled */ }
 
         if (text.isBlank()) {
@@ -155,11 +187,17 @@ class LinkGuardAccessibilityService : AccessibilityService() {
 
         Log.d(TAG, "Found ${urls.size} URL(s) in $packageName: $urls")
 
+        val now = System.currentTimeMillis()
+        // Purge expired entries to keep the map from growing indefinitely
+        recentlyScannedByA11y.entries.removeIf { now - it.value > A11Y_URL_DEDUP_MS }
+
         urls.forEach { url ->
-            if (ScanDeduplicator.shouldScan(url)) {
-                handleUrl(url, packageName)
+            val lastSeen = recentlyScannedByA11y[url] ?: 0L
+            if (now - lastSeen < A11Y_URL_DEDUP_MS) {
+                Log.d(TAG, "Skipping (scanned by accessibility within 3min): $url")
             } else {
-                Log.d(TAG, "Skipping (already scanned): $url")
+                recentlyScannedByA11y[url] = now
+                handleUrl(url, packageName)
             }
         }
     }
@@ -184,29 +222,35 @@ class LinkGuardAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun handleUrl(url: String, sourcePackage: String) {
-        Log.d(TAG, "Scanning (accessibility): $url from $sourcePackage")
+        Log.d(TAG, "Scanning silently (accessibility): $url from $sourcePackage")
 
-        if (!Settings.canDrawOverlays(applicationContext)) {
-            Log.w(TAG, "Overlay permission not granted — scanning silently")
-            val verdict = ScanOrchestrator.scan(url, applicationContext)
-            ScanHistoryPrefs.addEntry(applicationContext, verdict, sourcePackage)
-            return
-        }
-
-        // Show scanning overlay immediately
-        overlayManager.showScanning(url)
-
-        val verdict = ScanOrchestrator.scan(url, applicationContext)
+        // Scan entirely in the background — no scanning spinner shown.
+        // For accessibility scans we only interrupt the user if a threat is found.
+        // Showing a "Scanning…" card that immediately disappears (when safe) is
+        // confusing and was causing the "cards disappear" symptom.
+        //
+        // scanQuick = VT cache lookup only (< 1s), no 25-second polling loop.
+        // This lets multiple chat URLs be scanned in parallel quickly without
+        // exhausting the VT rate limit (4 req/min free tier).
+        val verdict = ScanOrchestrator.scanQuick(url, applicationContext)
         ScanHistoryPrefs.addEntry(applicationContext, verdict, sourcePackage)
 
-        // For accessibility scans: only interrupt the user for threats
-        // SAFE links are logged silently (auto-dismiss overlay)
         when (verdict.level) {
             VerdictLevel.SAFE -> {
-                Log.d(TAG, "Safe (silent): $url")
-                overlayManager.dismiss()
+                Log.d(TAG, "Safe — logged silently: $url")
+                // No overlay shown; entry saved to scan log.
             }
-            else -> overlayManager.updateVerdict(verdict)
+            else -> {
+                if (!Settings.canDrawOverlays(applicationContext)) {
+                    Log.w(TAG, "Threat detected but overlay permission not granted: $url")
+                    return
+                }
+                // We already have the verdict — show it directly without the scanning
+                // intermediate state. Both calls post to the main thread in order.
+                overlayManager.showScanning(url)
+                overlayManager.updateVerdict(verdict)
+                Log.d(TAG, "Threat overlay shown (${verdict.level}): $url")
+            }
         }
     }
 

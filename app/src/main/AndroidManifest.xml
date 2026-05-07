@@ -72,9 +72,11 @@
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
-            <meta-data
-                android:name="android.service.notification.default_filter_types"
-                android:value="conversations|alerting" />
+            <!-- No default_filter_types filter — we must receive ALL notification types,
+                 including "silent" ones. Users commonly mute messaging apps (WhatsApp
+                 group chats, etc.), which downgrades notifications to the "silent" category
+                 on Android 11+. Filtering to "conversations|alerting" only would silently
+                 drop phishing links arriving in muted chats. -->
         </service>
 
         <!-- Foreground service — keeps the process alive when app is closed -->

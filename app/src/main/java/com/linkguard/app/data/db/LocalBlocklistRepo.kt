@@ -31,11 +31,14 @@ class LocalBlocklistRepo(private val dao: BlocklistDao) {
             return true
         }
 
-        // Check each parent domain level
-        // e.g. "a.b.evil.com" → check "b.evil.com", "evil.com"
+        // Check each parent domain level, stopping before bare TLDs.
+        // e.g. "a.b.evil.com"  → checks "b.evil.com", "evil.com"  (not "com")
+        //      "login.evil.co.il" → checks "evil.co.il"             (not "co.il" or "il")
+        // We require at least 2 labels to remain so we never match a TLD or ccTLD.
         val parts = normalized.split(".")
         for (i in 1 until parts.size - 1) {
             val parent = parts.drop(i).joinToString(".")
+            if (parent.count { it == '.' } < 1) continue  // skip bare TLDs
             if (dao.isDomainBlocked(parent) > 0) {
                 Log.d(TAG, "Blocked (parent match: $parent): $normalized")
                 return true

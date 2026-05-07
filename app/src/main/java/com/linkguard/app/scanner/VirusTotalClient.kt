@@ -43,6 +43,11 @@ object VirusTotalClient {
         val reasonHebrew: String? = null
     )
 
+    /**
+     * Full VT check: lookup cached result, submit if not found, then poll up to 25s.
+     * Used by the notification service — it's OK to wait since the user hasn't opened
+     * the app yet.
+     */
     suspend fun check(url: String): VtResult = withContext(Dispatchers.IO) {
         try {
             val urlId = urlToId(url)
@@ -77,6 +82,37 @@ object VirusTotalClient {
 
         } catch (e: Exception) {
             Log.e(TAG, "VirusTotal check failed: ${e.message}")
+            VtResult(false, false)
+        }
+    }
+
+    /**
+     * Fast VT check: only consults the VT cache (one API call, < 1s).
+     * If the URL isn't cached, submits it for background analysis so a future
+     * check can return a result — but does NOT block waiting for it.
+     *
+     * Used by the accessibility service, where the user is actively viewing the chat
+     * and multiple URLs need to be scanned quickly without hitting rate limits.
+     */
+    suspend fun checkCacheOnly(url: String): VtResult = withContext(Dispatchers.IO) {
+        try {
+            val urlId = urlToId(url)
+
+            val existing = getAnalysis(urlId)
+            if (existing != null) {
+                Log.d(TAG, "Cache hit (fast path) for $url: malicious=${existing.maliciousCount}")
+                return@withContext existing
+            }
+
+            // Not in cache — submit for background analysis so the next check
+            // (e.g., from a notification) can use the cached result. Don't wait.
+            Log.d(TAG, "Cache miss (fast path) — submitting $url for background analysis")
+            submitUrl(url)
+
+            VtResult(false, false)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "VirusTotal fast check failed: ${e.message}")
             VtResult(false, false)
         }
     }
@@ -117,8 +153,11 @@ object VirusTotalClient {
 
             val response = client.newCall(request).execute()
             val code = response.code
-            val body = response.body?.string()
-            response.close()
+            val body = try {
+                response.body?.string()
+            } finally {
+                response.close() // always release, even if body?.string() throws
+            }
 
             if (code == 429) {
                 Log.w(TAG, "Rate limited (429) on getAnalysis")

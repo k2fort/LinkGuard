@@ -73,13 +73,18 @@ object DomainAgeChecker {
 
             if (registrationDateStr == null) return@withContext AgeResult(null, null)
 
-            // RDAP dates are ISO 8601 — truncate to 19 chars to drop timezone suffix,
-            // then parse as UTC. Slight inaccuracy (≤1 day) is acceptable for our thresholds.
-            val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
-                timeZone = TimeZone.getTimeZone("UTC")
-            }
-            val regDate = sdf.parse(registrationDateStr.take(19))
-                ?: return@withContext AgeResult(null, null)
+            // RDAP dates are ISO 8601 but registries vary:
+            //   Full datetime:  "2024-03-15T10:30:00Z"  (most registries)
+            //   Date only:      "2024-03-15"            (some ccTLD registries)
+            // Try datetime first, fall back to date-only.
+            val regDate = run {
+                val sdfDatetime = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+                    .apply { timeZone = TimeZone.getTimeZone("UTC") }
+                val sdfDate = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    .apply { timeZone = TimeZone.getTimeZone("UTC") }
+                sdfDatetime.parse(registrationDateStr.take(19))
+                    ?: sdfDate.parse(registrationDateStr.take(10))
+            } ?: return@withContext AgeResult(null, null)
 
             val ageInDays = ((System.currentTimeMillis() - regDate.time) /
                     (1000L * 60 * 60 * 24)).toInt().coerceAtLeast(0)
