@@ -120,13 +120,15 @@ class ScanOrchestratorTest {
     }
 
     @Test
-    fun `shortened URL flag is included in reasons`() {
+    fun `shortened URL resolving to clean destination is SAFE with info reason`() {
+        // Shortened links that resolve to a clean destination should NOT escalate to
+        // SUSPICIOUS — the short-link note is informational only (infoReasons).
         val v = ScanOrchestrator.buildVerdict(
             "https://bit.ly/3xYz", "https://real-destination.com/page",
             gsb(false), vt(), age(null)
         )
-        assertEquals(VerdictLevel.SUSPICIOUS, v.level)
-        assertTrue("Expected short-link reason", v.reasons.any { it.contains("קצר") })
+        assertEquals(VerdictLevel.SAFE, v.level)
+        assertTrue("Expected short-link info reason", v.reasons.any { it.contains("מקוצר") })
     }
 
     // ── buildVerdict: SAFE path ───────────────────────────────────────────────
@@ -187,6 +189,45 @@ class ScanOrchestratorTest {
             gsb(true, "פישינג"), vt(malicious = 0), age(null)
         )
         assertEquals(VerdictLevel.DANGEROUS, v.level)
+    }
+
+    // ── isHighRiskTld ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `high-risk TLD top triggers SUSPICIOUS when cloud is clean`() {
+        val v = ScanOrchestrator.buildVerdict(
+            "https://ghostraper.top", "https://ghostraper.top",
+            gsb(false), vt(), age(null)
+        )
+        assertEquals(VerdictLevel.SUSPICIOUS, v.level)
+        assertTrue(v.reasons.any { it.contains("top") })
+    }
+
+    @Test
+    fun `high-risk TLD on original URL caught even when resolved URL is clean`() {
+        // Phishing sites often redirect to a safe-looking domain after landing.
+        // The original URL's TLD must be checked regardless of where it resolves.
+        val v = ScanOrchestrator.buildVerdict(
+            "https://ghostraper.top", "https://some-clean-site.com/page",
+            gsb(false), vt(), age(null)
+        )
+        assertEquals(VerdictLevel.SUSPICIOUS, v.level)
+        assertTrue(v.reasons.any { it.contains("top") })
+    }
+
+    @Test
+    fun `high-risk TLD tk triggers SUSPICIOUS`() {
+        assertTrue(ScanOrchestrator.isHighRiskTld("evil.tk"))
+    }
+
+    @Test
+    fun `legitimate TLD com does not trigger high-risk heuristic`() {
+        assertFalse(ScanOrchestrator.isHighRiskTld("google.com"))
+    }
+
+    @Test
+    fun `legitimate TLD co il does not trigger high-risk heuristic`() {
+        assertFalse(ScanOrchestrator.isHighRiskTld("leumi.co.il"))
     }
 
     // ── looksLikeRedirector ───────────────────────────────────────────────────

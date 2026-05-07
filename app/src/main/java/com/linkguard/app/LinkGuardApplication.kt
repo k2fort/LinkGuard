@@ -54,9 +54,12 @@ class LinkGuardApplication : Application() {
             .setConstraints(constraints)
             .build()
 
+        // UPDATE instead of KEEP: if the interval or constraints change in a future
+        // release, KEEP would leave existing users running the old work forever until
+        // they clear app data. UPDATE replaces stale enqueued work automatically.
         WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
             BlocklistUpdateWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request
         )
     }

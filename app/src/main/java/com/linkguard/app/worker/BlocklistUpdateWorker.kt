@@ -12,6 +12,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
+
 /**
  * Periodic background worker that refreshes the local phishing domain blocklist
  * from the OpenPhish community feed (no API key required).
@@ -62,17 +63,12 @@ class BlocklistUpdateWorker(
     }
 
     private fun fetchOpenPhishDomains(): Set<String> {
-        val client = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build()
-
         val request = Request.Builder()
             .url(FEED_URL)
             .header("User-Agent", "LinkGuard-Android/1.0")
             .build()
 
-        val response = client.newCall(request).execute()
+        val response = httpClient.newCall(request).execute()
         val body = try {
             if (!response.isSuccessful) {
                 Log.w(TAG, "Feed HTTP ${response.code}")
@@ -98,5 +94,12 @@ class BlocklistUpdateWorker(
         private const val SOURCE = "openphish"
         private const val FEED_URL = "https://openphish.com/feed.txt"
         const val WORK_NAME = "blocklist_daily_update"
+
+        // Shared singleton — creating a new OkHttpClient on every doWork() call leaks
+        // thread and connection pools (they are never shut down). One instance is enough.
+        private val httpClient = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
     }
 }

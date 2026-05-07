@@ -39,7 +39,9 @@ object WhitelistPrefs {
         prefs(context).getStringSet(KEY_DOMAINS, emptySet()) ?: emptySet()
 
     private fun normalize(domain: String): String =
-        domain.lowercase().removePrefix("www.").trimEnd('/')
+        // trimEnd('.') strips FQDN trailing dot from Android ART's java.net.URL
+        // before www. removal, so "www.youtube.com." → "youtube.com" not "youtube.com."
+        domain.lowercase().trimEnd('.').removePrefix("www.").trimEnd('/')
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

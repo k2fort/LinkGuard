@@ -170,9 +170,11 @@ class OverlayManager(private val context: Context) {
             view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnProceed)
                 .setOnClickListener { dismiss() }
 
-            // Show "Trust domain" button once verdict is known
+            // Show "Trust domain" button once verdict is known.
+            // Hidden for DANGEROUS — a panicked user could accidentally whitelist
+            // a confirmed phishing domain while reading the warning.
             val host = UrlExtractor.extractHost(verdict.url)
-            if (host != null) {
+            if (host != null && verdict.level != VerdictLevel.DANGEROUS) {
                 val btnTrust = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnTrustDomain)
                 btnTrust.visibility = View.VISIBLE
                 btnTrust.text = context.getString(R.string.overlay_btn_trust_domain, host)

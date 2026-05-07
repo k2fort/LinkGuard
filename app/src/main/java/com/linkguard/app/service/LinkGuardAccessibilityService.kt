@@ -11,12 +11,15 @@ import com.linkguard.app.data.prefs.ScanHistoryPrefs
 import com.linkguard.app.model.VerdictLevel
 import com.linkguard.app.overlay.OverlayManager
 import com.linkguard.app.scanner.ScanOrchestrator
+import com.linkguard.app.util.ThreatNotifier
 import com.linkguard.app.util.UrlExtractor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -41,6 +44,12 @@ class LinkGuardAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var overlayManager: OverlayManager
 
+    // Cached set of monitored packages — updated via SharedPreferences listener.
+    // Reading MonitoredAppsPrefs on every accessibility event (main thread, synchronous I/O)
+    // caused jank under heavy event load. Cache it here instead.
+    @Volatile private var monitoredPackages: Set<String> = emptySet()
+    private lateinit var monitoredAppsListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener
+
     // The monitored-app package currently in the foreground
     private var currentForegroundPackage: String? = null
 
@@ -55,24 +64,46 @@ class LinkGuardAccessibilityService : AccessibilityService() {
     // (e.g., dialogs or fragment animations that fire extra state-change events)
     private val lastScanByPackage = mutableMapOf<String, Long>()
 
+    // Periodic scan job — used for apps (e.g. Google Messages with Jetpack NavComponent)
+    // that don't fire TYPE_WINDOW_STATE_CHANGED when navigating between chats.
+    // Runs every 3s for 30s after the grace period whenever a monitored app foregrounds,
+    // ensuring chat content is scanned regardless of navigation event gaps.
+    // URL-level dedup (recentlyScannedByA11y) prevents duplicate API calls.
+    private var periodicScanJob: Job? = null
+
     // Per-URL dedup cache local to THIS service.
     // NOT shared with the notification service's ScanDeduplicator — that shared cache
     // was blocking accessibility scans whenever the notification service had already
     // scanned the same URL within the last 60s (which is almost always).
     // Using a local cache means the accessibility service scans what the user sees in the
     // chat, regardless of whether a notification scan happened earlier.
-    private val recentlyScannedByA11y = mutableMapOf<String, Long>()
+    // ConcurrentHashMap — scanVisibleContent runs on Dispatchers.Default (thread pool),
+    // so reads and writes to this map can race if it were a plain mutableMapOf.
+    private val recentlyScannedByA11y = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     companion object {
         // Skip events for 1.5s after a monitored app first foregrounds.
         // Prevents splash → home from being treated as a "screen navigation".
         private const val FOREGROUND_GRACE_MS = 1_500L
-        // Cooldown when the same Activity/screen fires repeated events
-        private const val SAME_SCREEN_COOLDOWN_MS = 15_000L
+        // Additional blocking window for same-class events after grace expires.
+        // The inbox/conversation-list fires 1-3 same-class events right after it
+        // finishes rendering — these almost always land within 600ms of grace expiry.
+        // This 700ms buffer blocks those "inbox settled" events without preventing
+        // the user from opening a chat immediately after the app loads.
+        private const val SAME_CLASS_POST_GRACE_DELAY_MS = 700L
+        // Cooldown when the same Activity/screen fires repeated events.
+        // 3s is long enough to suppress rapid dialog/animation noise on a single chat,
+        // but short enough that switching to a different chat triggers a fresh scan.
+        private const val SAME_SCREEN_COOLDOWN_MS = 3_000L
         // How long to remember a URL scanned by the accessibility service.
         // 3 minutes: prevents re-scanning the same chat on every dialog/animation event,
         // but allows fresh results if the user comes back to the chat later.
         private const val A11Y_URL_DEDUP_MS = 3 * 60 * 1000L
+        // Periodic scan fallback: how often to poll when in a monitored app foreground.
+        // Catches navigation events that don't fire TYPE_WINDOW_STATE_CHANGED.
+        private const val PERIODIC_SCAN_INTERVAL_MS = 3_000L
+        // How many periodic scans to run after the grace period (3s × 10 = 30s total).
+        private const val PERIODIC_SCAN_COUNT = 10
     }
 
     override fun onServiceConnected() {
@@ -83,6 +114,14 @@ class LinkGuardAccessibilityService : AccessibilityService() {
             flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
             notificationTimeout = 100
         }
+
+        // Prime the monitored-packages cache and keep it in sync.
+        monitoredPackages = MonitoredAppsPrefs.getMonitoredPackages(applicationContext)
+        monitoredAppsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            monitoredPackages = MonitoredAppsPrefs.getMonitoredPackages(applicationContext)
+        }
+        MonitoredAppsPrefs.registerListener(applicationContext, monitoredAppsListener)
+
         Log.d(TAG, "Accessibility service connected")
     }
 
@@ -93,10 +132,14 @@ class LinkGuardAccessibilityService : AccessibilityService() {
         if (packageName == this.packageName) return
         if (packageName == "android") return // System UI / launcher transitions
 
-        val className = event.className?.toString() ?: return
+        // Some apps (e.g. Google Messages with Jetpack NavComponent) fire
+        // TYPE_WINDOW_STATE_CHANGED with a null className for fragment navigation.
+        // Don't discard these — fall back to "" so the state machine can still
+        // detect transitions (null→"FragmentClass" or "FragmentClass"→null both
+        // produce screenChanged=true and trigger a scan).
+        val className = event.className?.toString() ?: ""
 
-        val monitored = MonitoredAppsPrefs.getMonitoredPackages(applicationContext)
-        if (monitored.isNotEmpty() && packageName !in monitored) return
+        if (monitoredPackages.isNotEmpty() && packageName !in monitoredPackages) return
 
         val now = System.currentTimeMillis()
         val previousPackage = currentForegroundPackage
@@ -105,9 +148,30 @@ class LinkGuardAccessibilityService : AccessibilityService() {
         if (packageName != previousPackage) {
             // App just came to the foreground — start a grace period and record the class.
             // We do NOT scan here: this is the chat list / inbox view, not a conversation.
+            // Reset lastScanByPackage so the "inbox guard" (same-class, no prior scan)
+            // kicks in fresh for this foreground session.
             Log.d(TAG, "App foregrounded: $packageName [$className] — grace period started")
             foregroundTimestampByPackage[packageName] = now
             lastSeenClassByPackage[packageName] = className
+            lastScanByPackage.remove(packageName)
+
+            // Start a periodic scan fallback for apps that don't fire
+            // TYPE_WINDOW_STATE_CHANGED when navigating between chats (e.g. Google
+            // Messages with Jetpack NavComponent). Waits out the grace+settle window,
+            // then probes the accessibility tree every 3s for 30s. URL-level dedup
+            // ensures we don't re-call the API for URLs already scanned this session.
+            periodicScanJob?.cancel()
+            val fgPackage = packageName
+            periodicScanJob = serviceScope.launch {
+                delay(FOREGROUND_GRACE_MS + SAME_CLASS_POST_GRACE_DELAY_MS)
+                repeat(PERIODIC_SCAN_COUNT) {
+                    if (!isActive || currentForegroundPackage != fgPackage) return@launch
+                    Log.d(TAG, "Periodic scan tick for $fgPackage")
+                    scanVisibleContent(fgPackage)
+                    delay(PERIODIC_SCAN_INTERVAL_MS)
+                }
+            }
+
             return
         }
 
@@ -127,11 +191,27 @@ class LinkGuardAccessibilityService : AccessibilityService() {
         val screenChanged = className != lastClass
 
         if (!screenChanged) {
-            // Same screen — apply cooldown to suppress dialog/animation noise
-            val lastScan = lastScanByPackage[packageName] ?: 0L
-            if (now - lastScan < SAME_SCREEN_COOLDOWN_MS) {
-                Log.d(TAG, "Same-screen cooldown active for $packageName — skipping")
+            // Block scans for (grace + 0.7s) after foregrounding — lets the inbox settle.
+            val foregroundedAt = foregroundTimestampByPackage[packageName] ?: 0L
+            if (now < foregroundedAt + FOREGROUND_GRACE_MS + SAME_CLASS_POST_GRACE_DELAY_MS) {
+                Log.d(TAG, "Post-foreground same-class block active for $packageName — skipping")
                 return
+            }
+
+            // Same-screen cooldown: for KNOWN class names only.
+            //
+            // When className is "" (null/unknown — e.g. Google Messages NavComponent), we
+            // cannot distinguish "same chat fired another event" from "user navigated to a
+            // different chat". Applying the cooldown here blocks the second chat every time.
+            // Instead, skip the screen-level cooldown and rely entirely on the per-URL
+            // dedup cache (recentlyScannedByA11y, 3-minute window) which prevents
+            // duplicate API calls even when scanVisibleContent runs more frequently.
+            if (className.isNotEmpty()) {
+                val lastScan = lastScanByPackage[packageName] ?: 0L
+                if (now - lastScan < SAME_SCREEN_COOLDOWN_MS) {
+                    Log.d(TAG, "Same-screen cooldown active for $packageName — skipping")
+                    return
+                }
             }
         }
 
@@ -216,8 +296,14 @@ class LinkGuardAccessibilityService : AccessibilityService() {
 
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            collectText(child, sb, depth + 1)
-            child.recycle()
+            // Use finally so child is always recycled even if collectText throws.
+            // Without this, leaked nodes accumulate across every scan event and can
+            // cause the accessibility service to be force-stopped on older API levels.
+            try {
+                collectText(child, sb, depth + 1)
+            } finally {
+                @Suppress("DEPRECATION") child.recycle()
+            }
         }
     }
 
@@ -242,7 +328,8 @@ class LinkGuardAccessibilityService : AccessibilityService() {
             }
             else -> {
                 if (!Settings.canDrawOverlays(applicationContext)) {
-                    Log.w(TAG, "Threat detected but overlay permission not granted: $url")
+                    Log.w(TAG, "Threat detected but overlay permission not granted — falling back to notification: $url")
+                    ThreatNotifier.notify(applicationContext, verdict)
                     return
                 }
                 // We already have the verdict — show it directly without the scanning
@@ -260,7 +347,9 @@ class LinkGuardAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        MonitoredAppsPrefs.unregisterListener(applicationContext, monitoredAppsListener)
         overlayManager.dismiss()
+        periodicScanJob?.cancel()
         serviceScope.cancel()
         Log.d(TAG, "Accessibility service stopped")
     }

@@ -100,7 +100,10 @@ object UrlExtractor {
     fun extractHost(url: String): String? {
         return try {
             val withScheme = if (!url.startsWith("http", ignoreCase = true)) "https://$url" else url
-            java.net.URL(withScheme).host.takeIf { it.isNotBlank() }
+            // trimEnd('.') strips the FQDN trailing dot that Android ART's java.net.URL
+            // appends (e.g. "ghostraper.top." → "ghostraper.top"). Without this, TLD
+            // checks like substringAfterLast('.') return "" and silently miss the domain.
+            java.net.URL(withScheme).host.takeIf { it.isNotBlank() }?.trimEnd('.')
         } catch (e: Exception) {
             null
         }

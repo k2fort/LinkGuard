@@ -85,6 +85,21 @@ object ScanOrchestrator {
         val resolvedHost = UrlExtractor.extractHost(scanUrl) ?: host
         Log.d(TAG, "Scanning final URL: $scanUrl")
 
+        // Re-check the whitelist with the resolved destination.
+        // The first check (above) used the original host — so if the user whitelisted
+        // google.com but the URL arrived as a bit.ly shortlink that resolves to Google,
+        // it would have been missed. Check again now that we know where it actually goes.
+        if (resolvedHost != host && WhitelistPrefs.isTrusted(context, resolvedHost)) {
+            Log.d(TAG, "Whitelisted (resolved destination): $resolvedHost")
+            return@coroutineScope ScanVerdict(
+                url = url,
+                level = VerdictLevel.SAFE,
+                resolvedUrl = resolvedHost,
+                reasons = listOf("הדומיין היעד נמצא ברשימת הדומיינים הבטוחים שלך"),
+                source = VerdictSource.LOCAL
+            )
+        }
+
         // ── Layer 4: Cloud checks (parallel) ────────────────────────────────
         val gsbDeferred  = async { GoogleSafeBrowsingClient.check(scanUrl) }
         val vtDeferred   = async {
@@ -102,7 +117,26 @@ object ScanOrchestrator {
                 "Domain age: ${age.ageInDays ?: "unknown"} days")
 
         // ── Layer 5: Verdict assembly ────────────────────────────────────────
-        buildVerdict(url, resolved.finalUrl, gsb, vt, age)
+        val verdict = buildVerdict(url, resolved.finalUrl, gsb, vt, age)
+
+        // Safety net: if buildVerdict returned SAFE but the original host is on the
+        // high-risk TLD list, escalate to SUSPICIOUS.
+        // `host` is the value already validated by extractHost() at Layer 1 (it
+        // passed the null-check), so this check is robust even if buildVerdict's
+        // internal extractHost() returns null due to invisible Unicode in the URL.
+        if (verdict.level == VerdictLevel.SAFE && isHighRiskTld(host)) {
+            Log.d(TAG, "TLD safety-net triggered for $host — escalating to SUSPICIOUS")
+            val tldReason = "סיומת הדומיין (${host.trimEnd('.').substringAfterLast('.')}) נפוצה מאוד באתרי הונאה ופישינג"
+            return@coroutineScope ScanVerdict(
+                url = url,
+                level = VerdictLevel.SUSPICIOUS,
+                resolvedUrl = verdict.resolvedUrl,
+                reasons = verdict.reasons + tldReason,
+                source = VerdictSource.HEURISTIC
+            )
+        }
+
+        verdict
     }
 
     internal fun buildVerdict(
@@ -112,20 +146,42 @@ object ScanOrchestrator {
         vt: VirusTotalClient.VtResult,
         age: DomainAgeChecker.AgeResult
     ): ScanVerdict {
-        val reasons = mutableListOf<String>()
         val resolvedDisplay = if (resolvedUrl != originalUrl) resolvedUrl else null
         val isShortened = UrlExtractor.isShortened(originalUrl)
 
-        if (isShortened) {
-            reasons.add("קישור מקוצר — היעד האמיתי הוסתר מאחורי קישור קצר")
-        }
-        age.reasonHebrew?.let { reasons.add(it) }
+        // Heuristic reasons that escalate the verdict to SUSPICIOUS.
+        // NOTE: "isShortened" is intentionally NOT here — every safe bit.ly link
+        // in WhatsApp would produce a false SUSPICIOUS alert, training users to ignore
+        // warnings. Domain age, redirector pattern, and high-risk TLD ARE genuine signals.
+        val suspiciousReasons = mutableListOf<String>()
+        age.reasonHebrew?.let { suspiciousReasons.add(it) }
         if (looksLikeRedirector(resolvedUrl)) {
-            reasons.add("הכתובת נראית כמנגנון הפניה מוסתר — ייתכן שהיעד האמיתי שונה")
+            suspiciousReasons.add("הכתובת נראית כמנגנון הפניה מוסתר — ייתכן שהיעד האמיתי שונה")
+        }
+        // Check high-risk TLD on the ORIGINAL URL first — phishing sites often redirect
+        // to a clean-looking domain so the resolved URL passes, while the link the user
+        // actually received was already on an abused TLD.
+        val originalHost = UrlExtractor.extractHost(originalUrl)
+        val resolvedHost = UrlExtractor.extractHost(resolvedUrl)
+        val riskyHost = when {
+            originalHost != null && isHighRiskTld(originalHost) -> originalHost
+            resolvedHost != null && isHighRiskTld(resolvedHost) -> resolvedHost
+            else -> null
+        }
+        if (riskyHost != null) {
+            suspiciousReasons.add("סיומת הדומיין (${ riskyHost.trimEnd('.').substringAfterLast('.') }) נפוצה מאוד באתרי הונאה ופישינג")
+        }
+
+        // Informational note shown on the SAFE verdict for transparency.
+        // Does NOT escalate severity on its own.
+        val infoReasons = mutableListOf<String>()
+        if (isShortened) {
+            infoReasons.add("קישור מקוצר — היעד האמיתי נבדק בהצלחה")
         }
 
         // DANGEROUS: Google Safe Browsing confirmed threat
         if (gsb.isThreat) {
+            val reasons = (suspiciousReasons + infoReasons).toMutableList()
             gsb.threatTypeHebrew?.let { reasons.add(it) }
             vt.reasonHebrew?.let { reasons.add(it) }
             return ScanVerdict(
@@ -139,6 +195,7 @@ object ScanOrchestrator {
 
         // DANGEROUS: VirusTotal — multiple engines flagged
         if (vt.isMalicious) {
+            val reasons = (suspiciousReasons + infoReasons).toMutableList()
             vt.reasonHebrew?.let { reasons.add(it) }
             return ScanVerdict(
                 url = originalUrl,
@@ -151,6 +208,7 @@ object ScanOrchestrator {
 
         // SUSPICIOUS: VirusTotal flagged by a few engines
         if (vt.isSuspicious) {
+            val reasons = (suspiciousReasons + infoReasons).toMutableList()
             vt.reasonHebrew?.let { reasons.add(it) }
             return ScanVerdict(
                 url = originalUrl,
@@ -161,23 +219,23 @@ object ScanOrchestrator {
             )
         }
 
-        // SUSPICIOUS: heuristic signals present (redirector pattern, new domain, etc.)
-        if (reasons.isNotEmpty()) {
+        // SUSPICIOUS: heuristic signals present (new domain, redirector pattern)
+        if (suspiciousReasons.isNotEmpty()) {
             return ScanVerdict(
                 url = originalUrl,
                 level = VerdictLevel.SUSPICIOUS,
                 resolvedUrl = resolvedDisplay,
-                reasons = reasons,
+                reasons = suspiciousReasons + infoReasons,
                 source = VerdictSource.HEURISTIC
             )
         }
 
-        // SAFE: passed all checks
+        // SAFE: passed all checks — include informational notes (e.g. "shortened link verified")
         return ScanVerdict(
             url = originalUrl,
             level = VerdictLevel.SAFE,
             resolvedUrl = resolvedDisplay,
-            reasons = listOf("הקישור עבר את כל בדיקות האבטחה בהצלחה"),
+            reasons = infoReasons.ifEmpty { listOf("הקישור עבר את כל בדיקות האבטחה בהצלחה") },
             source = VerdictSource.CLOUD
         )
     }
@@ -203,10 +261,34 @@ object ScanOrchestrator {
         return hasRandomSubdomain && hasRedirectPath
     }
 
+    /**
+     * Returns true if the domain's TLD is in the high-abuse list.
+     *
+     * These TLDs consistently rank in the top-10 most-abused by Spamhaus, SURBL,
+     * and abuse.ch. Legitimate businesses rarely register on these TLDs, so a hit
+     * here is a meaningful risk signal even when all cloud APIs return clean.
+     *
+     * Source: Spamhaus TLD reputation reports, ICANN abuse data.
+     */
+    internal fun isHighRiskTld(host: String): Boolean {
+        val tld = host.trimEnd('.').substringAfterLast('.').lowercase()
+        return tld in HIGH_RISK_TLDS
+    }
+
+    private val HIGH_RISK_TLDS = setOf(
+        // Consistently top-abused generic TLDs
+        "top", "tk", "ml", "ga", "cf", "gq",
+        // High-abuse gTLDs (cheap/free registration attracts spammers)
+        "buzz", "click", "work", "loan", "win", "download",
+        "racing", "stream", "trade", "accountant", "science",
+        "review", "country", "cricket", "party", "faith",
+        "date", "webcam", "men", "bid", "loan", "gdn"
+    )
+
     private fun safeFallback(url: String) = ScanVerdict(
         url = url,
-        level = VerdictLevel.SAFE,
-        reasons = listOf("לא ניתן לנתח את הקישור"),
+        level = VerdictLevel.SUSPICIOUS,
+        reasons = listOf("לא ניתן לנתח את הכתובת — ייתכן שהיא מוסתרת או מעוצבת בצורה חריגה"),
         source = VerdictSource.LOCAL
     )
 }

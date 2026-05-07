@@ -11,6 +11,7 @@ import com.linkguard.app.data.prefs.ScanHistoryPrefs
 import com.linkguard.app.overlay.OverlayManager
 import com.linkguard.app.scanner.ScanDeduplicator
 import com.linkguard.app.scanner.ScanOrchestrator
+import com.linkguard.app.util.ThreatNotifier
 import com.linkguard.app.util.UrlExtractor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -106,8 +107,11 @@ class LinkGuardNotificationService : NotificationListenerService() {
         }
         if (freshUrls.isEmpty()) return
 
-        serviceScope.launch {
-            freshUrls.forEach { url -> handleDetectedUrl(url, packageName) }
+        // Each URL scanned in its own coroutine so they run in parallel.
+        // Previously forEach ran serially — a notification with 3 URLs could
+        // take up to 75 seconds (3 × 25s VT polling) before the last verdict appeared.
+        freshUrls.forEach { url ->
+            serviceScope.launch { handleDetectedUrl(url, packageName) }
         }
     }
 
@@ -149,7 +153,8 @@ class LinkGuardNotificationService : NotificationListenerService() {
         if (canShowOverlay) {
             overlayManager.updateVerdict(verdict)
         } else {
-            Log.w(TAG, "Overlay permission not granted — verdict logged silently: ${verdict.level}")
+            Log.w(TAG, "Overlay permission not granted — falling back to notification: ${verdict.level}")
+            ThreatNotifier.notify(applicationContext, verdict)
         }
     }
 }

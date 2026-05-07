@@ -39,7 +39,7 @@
     <string name="overlay_redirects_to">מוביל לאתר:</string>
     <string name="overlay_btn_proceed">המשך</string>
     <string name="overlay_btn_proceed_anyway">המשך בכל זאת</string>
-    <string name="overlay_btn_block">חסום</string>
+    <string name="overlay_btn_block">סגור</string>
     <string name="overlay_close_desc">סגור אזהרה</string>
     <string name="overlay_verdict_icon_desc">אייקון תוצאה</string>
 
@@ -92,13 +92,13 @@
     <string name="settings_revoke_accessibility">נהל שירות נגישות</string>
     <string name="settings_credits">Made by Kalbaska Team 2026\nv0 alpha test</string>
     <string name="settings_blocklist_title">מאגר איומים</string>
-    <string name="settings_blocklist_never">לא עודכן — יתעדכן אוטומטית כשתהיה חיבור לאינטרנט</string>
+    <string name="settings_blocklist_never">לא עודכן — יתעדכן אוטומטית כשיהיה חיבור לאינטרנט</string>
     <string name="settings_blocklist_last_updated">עדכון אחרון: %1$s · %2$d דומיינים</string>
     <string name="settings_update_blocklist_now">עדכן עכשיו</string>
     <string name="settings_blocklist_updating">מעדכן…</string>
     <string name="settings_blocklist_update_failed">העדכון נכשל — בדוק את החיבור לאינטרנט</string>
     <string name="settings_whitelist_title">דומיינים מהימנים</string>
-    <string name="settings_manage_whitelist">ניהול רשימה לבנה</string>
+    <string name="settings_manage_whitelist">ניהול דומיינים מהימנים</string>
 
     <!-- Whitelist screen -->
     <string name="title_whitelist">דומיינים מהימנים</string>
@@ -114,4 +114,8 @@
     <!-- Overlay trust button -->
     <string name="overlay_btn_trust">סמן כבטוח</string>
     <string name="overlay_btn_trust_domain">סמן %1$s כבטוח</string>
+
+    <!-- Threat notification channel (fallback when overlay permission not granted) -->
+    <string name="threat_channel_name">התראות איום</string>
+    <string name="threat_channel_desc">מוצג כשמתגלה קישור חשוד או מסוכן ואין הרשאת שכבת-על</string>
 </resources>

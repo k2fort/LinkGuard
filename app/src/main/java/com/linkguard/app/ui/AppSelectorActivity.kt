@@ -85,7 +85,7 @@ private class AppListAdapter(
         fun bind(app: AppInfo) {
             icon.setImageDrawable(app.icon)
             name.text = app.appName
-            packageNameView.text = app.packageName
+            packageNameView.visibility = View.GONE  // package names (e.g. com.whatsapp) are meaningless to non-technical users
             checkbox.isChecked = app.isMonitored
 
             // Toggle on row click or checkbox click

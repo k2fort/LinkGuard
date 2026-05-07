@@ -42,4 +42,20 @@ object MonitoredAppsPrefs {
     fun isMonitored(context: Context, packageName: String): Boolean {
         return packageName in getMonitoredPackages(context)
     }
+
+    fun registerListener(
+        context: Context,
+        listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener
+    ) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterListener(
+        context: Context,
+        listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener
+    ) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .unregisterOnSharedPreferenceChangeListener(listener)
+    }
 }

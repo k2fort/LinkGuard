@@ -59,14 +59,22 @@ object GoogleSafeBrowsingClient {
                 })
             }.toString()
 
+            // Key sent as a header instead of a URL query param so it is not
+            // visible in OkHttp logs, crash reporters, or server access logs.
+            // GCP API keys support the X-Goog-Api-Key header as an alternative
+            // to the ?key= query param for all REST APIs.
             val request = Request.Builder()
-                .url("$API_URL?key=${BuildConfig.GOOGLE_SAFE_BROWSING_API_KEY}")
+                .url(API_URL)
                 .post(requestBody.toRequestBody("application/json".toMediaType()))
+                .addHeader("X-Goog-Api-Key", BuildConfig.GOOGLE_SAFE_BROWSING_API_KEY)
                 .build()
 
             val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: return@withContext ThreatResult(false)
-            response.close()
+            val body = try {
+                response.body?.string() ?: return@withContext ThreatResult(false)
+            } finally {
+                response.close()
+            }
 
             if (!response.isSuccessful) {
                 Log.w(TAG, "API error ${response.code}: $body")

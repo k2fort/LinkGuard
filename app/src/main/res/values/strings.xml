@@ -39,7 +39,7 @@
     <string name="overlay_redirects_to">Leads to:</string>
     <string name="overlay_btn_proceed">Proceed</string>
     <string name="overlay_btn_proceed_anyway">Proceed Anyway</string>
-    <string name="overlay_btn_block">Block</string>
+    <string name="overlay_btn_block">Close</string>
     <string name="overlay_close_desc">Close warning</string>
     <string name="overlay_verdict_icon_desc">Verdict icon</string>
 
@@ -114,4 +114,8 @@
     <!-- Overlay trust button -->
     <string name="overlay_btn_trust">Trust domain</string>
     <string name="overlay_btn_trust_domain">Trust %1$s</string>
+
+    <!-- Threat notification channel (fallback when overlay permission not granted) -->
+    <string name="threat_channel_name">Threat Alerts</string>
+    <string name="threat_channel_desc">Shown when a suspicious or dangerous link is detected and overlay permission is not granted</string>
 </resources>
